@@ -1,0 +1,385 @@
+{
+  "name": "olist-analyst-bot",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        32,
+        -16
+      ],
+      "id": "b08e2e09-61bc-423b-8ce1-5309fa9f21e5",
+      "name": "Telegram Trigger",
+      "webhookId": "0eb88d4a-bf4f-4f47-ae88-d37990f83325",
+      "credentials": {
+        "telegramApi": {
+          "id": "S7Dda4qNa8UcGnPD",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d95f330e-dfbf-4521-950c-2796824aa714",
+              "leftValue": "={{ $json.message.chat.id }}",
+              "rightValue": "={{ $json.message.chat.id }}",
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        256,
+        -16
+      ],
+      "id": "94b6bb59-d225-4378-a173-8b7b84fbf31b",
+      "name": "If ID CORRECT"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Telegram Trigger').item.json.message.text }}",
+        "options": {
+          "systemMessage": "You are a data analyst assistant for an e-commerce dataset (Olist, Brazil). You answer questions by querying a PostgreSQL database with the run_sql tool. Reply in the same language the user writes in (usually Indonesian).\n\nRULES\n- Always query with run_sql before giving any number. Never guess or invent numbers.\n- Only write SELECT queries. Always add LIMIT (max 50 rows) unless the query returns one aggregated row.\n- Use only these views: sales_items, orders_enriched, customers. Do not add a schema prefix.\n- The data is HISTORICAL, from 2016-09-04 to 2018-10-17. Never use NOW() or CURRENT_DATE. If the user says \"this month\" or \"latest\", use the end of the data and say so. 2016 and Sep-Oct 2018 are sparse, so trends there are unreliable.\n- Currency is BRL (Brazilian Real). State it with money values.\n- If a question cannot be answered with this data (profit, costs, website behavior, real-time data), say so plainly.\n- If a query errors, fix it and retry once. If it still fails, tell the user briefly.\n\nDEFINITIONS (important)\n- Revenue = SUM(price) from sales_items, excluding order_status IN ('canceled','unavailable'). freight_value is shipping, NOT revenue.\n- Customers = COUNT(DISTINCT customer_unique_id). Never count customer_id.\n- Never JOIN sales_items to orders_enriched and then SUM money (it duplicates rows). Use one view per question when possible.\n- Late delivery: orders_enriched.is_late = true. Average delivery time: AVG(delivery_days), only delivered orders.\n- review_score is 1 to 5, averaged per order, may be NULL.\n- For monthly trends use order_month.\n\nVIEWS\nsales_items (one row per item sold): order_id, order_item_id, order_status, order_date, order_month, customer_unique_id, customer_state, customer_city, product_id, product_category (English), seller_id, seller_state, seller_city, price, freight_value\norders_enriched (one row per order): order_id, customer_unique_id, customer_state, customer_city, order_status, order_date, order_month, delivered_date, estimated_delivery_date, delivery_days, is_late, item_count, items_value, freight_total, total_paid, max_installments, payment_types, review_score\ncustomers (one row per person): customer_unique_id, customer_state, customer_city, order_count (valid orders only), first_order_date, last_order_date, total_spent\n\nANSWER STYLE\n- Plain text only, no markdown, no tables with pipes, no asterisks. Short and clear (under 1500 characters).\n- Give the answer first, then 1-2 lines of context.\n- At the end, add a line \"SQL: \" followed by the query you used."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        480,
+        -32
+      ],
+      "id": "87acb38a-b149-42c0-bb08-9c78bd29095c",
+      "name": "AI Agent",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Telegram Trigger').item.json.message.chat.id }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        544,
+        240
+      ],
+      "id": "524458f7-015b-4453-b27f-64ce7229c3f2",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Runs ONE read-only PostgreSQL SELECT query against the analytics views (sales_items, orders_enriched, customers) and returns the rows. Input is the SQL text only.",
+        "operation": "executeQuery",
+        "query": "{{ $fromAI('query', 'A single PostgreSQL SELECT statement, no trailing semicolon', 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.7,
+      "position": [
+        720,
+        256
+      ],
+      "id": "22cf18ac-a037-4e26-869f-3ee7db95aed8",
+      "name": "run_sql",
+      "credentials": {
+        "postgres": {
+          "id": "bJxXlPRs5QlTWbBx",
+          "name": "supabase-bot-readonly"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Background\n\nSeorang data analyst biasanya lagi fokus di project utama (dashboard, modeling, analisis mendalam). Lalu tiba-tiba masuk ad-hoc request dari stakeholder, misalnya \"revenue bulan lalu berapa?\" atau \"berapa % order telat kirim?\". Pertanyaannya kelihatan kecil, tapi analyst harus berhenti, buka database, nulis query, lalu balas. Setelah itu butuh waktu lagi buat balik fokus.\n\n## Kenapa Penting Diautomatisasi\n\n- Context switching mahal: interupsi 5 menit bisa menghabiskan fokus jauh lebih lama.\n- Pertanyaannya repetitif: pola yang sama dengan filter yang beda.\n- Analyst jadi bottleneck: stakeholder nunggu, keputusan jadi lambat.\n- Definisi metrik bisa melenceng kalau dijawab manual (revenue dengan atau tanpa freight, customer_id vs customer_unique_id).\n- Jawaban lewat chat nggak terdokumentasi dan sulit diaudit.\n\nSolusinya: bot Telegram yang menjawab pertanyaan rutin dari database dengan definisi metrik yang konsisten, sehingga analyst tetap fokus di project utama.",
+        "height": 416,
+        "width": 720
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -240,
+        -480
+      ],
+      "id": "55a6a5e9-5059-405d-a115-0406ae1b2b83",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "model": "qwen/qwen3.8-27b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        368,
+        224
+      ],
+      "id": "0e10041c-715b-4124-bd98-afe1bc05c867",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "wcUowSEGohvbPPfL",
+          "name": "Data_analyst"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Pf68huHZidRzg2lyO5zT1BGHBO6NWIHQcKIE1m1UFE8",
+          "mode": "list",
+          "cachedResultName": "Validation_monitor",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Pf68huHZidRzg2lyO5zT1BGHBO6NWIHQcKIE1m1UFE8/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Pf68huHZidRzg2lyO5zT1BGHBO6NWIHQcKIE1m1UFE8/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "log_id": "={{ $('Telegram Trigger').item.json.message.chat.id }}_{{ $('Telegram Trigger').item.json.message.message_id }}",
+            "timestamp": "={{ $now.format('yyyy-MM-dd HH:mm:ss') }}",
+            "chat_id": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+            "question": "={{ $('Telegram Trigger').item.json.message.text }}",
+            "bot_answer": "={{ $json.output }}",
+            "sql_used": "={{ ($json.output.split('SQL:')[1] || '').trim() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "log_id",
+              "displayName": "log_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "timestamp",
+              "displayName": "timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "chat_id",
+              "displayName": "chat_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "question",
+              "displayName": "question",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "bot_answer",
+              "displayName": "bot_answer",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sql_used",
+              "displayName": "sql_used",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "user_feedback",
+              "displayName": "user_feedback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        864,
+        112
+      ],
+      "id": "9c62349a-2676-418d-b96f-7c533ffb8f6f",
+      "name": "Append row validation sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "0ZHZ5KcP1pViciYa",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger').item.json.message.chat.id }}",
+        "text": "={{ $json.output.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        864,
+        -32
+      ],
+      "id": "eb1d224a-7dbe-4a97-b21f-6c3afb611fc2",
+      "name": "Send a text message",
+      "webhookId": "52fc1a23-3df1-4e6d-ae22-110d66051dbd",
+      "credentials": {
+        "telegramApi": {
+          "id": "S7Dda4qNa8UcGnPD",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "If ID CORRECT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If ID CORRECT": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row validation sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "run_sql": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "d92647b0-df2d-4386-b54f-d3ff882a9c0c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "04bd147a63c99bfbe233bc88e8f992c876acd9eda72980fac9a58456e3ac3395"
+  },
+  "nodeGroups": [],
+  "id": "MBf2JJ9qdFhrXv2g",
+  "tags": []
+}
