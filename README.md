@@ -1,4 +1,4 @@
-# Olist Analyst Bot
+# Data Analyst Bot
 
 Bot Telegram yang menjawab pertanyaan ad-hoc seputar data e-commerce Olist (Brazil). Pertanyaan bahasa natural diterjemahkan menjadi query SQL, dijalankan di PostgreSQL (Supabase), lalu hasilnya dikirim balik lengkap dengan SQL yang dipakai.
 
