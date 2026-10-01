@@ -57,8 +57,7 @@ Telegram  ->  n8n (AI Agent: Groq + Qwen)  ->  Supabase (PostgreSQL, read-only)
 olist-analyst-bot/
 ├── README.md
 ├── olist-analyst-bot.json    # export workflow n8n
-└── images/
-    └── demo-telegram.png     # screenshot demo
+└── demo.png     # screenshot demo
 ```
 
 ## Dataset
